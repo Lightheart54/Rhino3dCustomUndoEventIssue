@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+  </Folder>
   <Project Path="CustomUndoEventIssue/CustomUndoEventIssue.csproj" />
   <Project Path="SecondPlugin/SecondPlugin.csproj">
     <BuildDependency Project="CustomUndoEventIssue/CustomUndoEventIssue.csproj" />
