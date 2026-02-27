@@ -90,3 +90,15 @@ public class TestSpendFive : Command
         return Result.Success;
     }
 }
+[Rhino.Commands.CommandStyle(Rhino.Commands.Style.ScriptRunner)]
+public class TestScriptEarnCommand : Command
+    {
+    public override string EnglishName => "TestScriptEarn";
+    protected override Result RunCommand(RhinoDoc doc, RunMode mode)
+    {
+        RhinoApp.RunScript("TestEarnTen", false);
+        RhinoApp.RunScript("TestSpendFive", false);
+
+        return Result.Success;
+    }
+}

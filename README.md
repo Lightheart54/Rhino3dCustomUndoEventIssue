@@ -8,6 +8,8 @@ The wrong ways involve reactively registering additional custom undo events in r
 
 The right way involves producing a parrallel undo/redo stack that is independent of the one Rhino uses, and then synchronizing it with the Rhino undo/redo stack. 
 
+Additionally I've included a simple script runner command that demonstrates that this issue is not limited to custom undo events registered reactively, but also occurs when a script runner command calls two commands that each register a custom undo event.
+
 ## Steps to Reproduce
 1. Clone the repository and open the solution in Visual Studio.
 2. Build the solution to ensure all dependencies are resolved.
