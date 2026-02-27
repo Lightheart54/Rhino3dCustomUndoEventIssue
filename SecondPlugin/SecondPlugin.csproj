@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	
+  <PropertyGroup>
+    <!-- Select the framework(s) you wish to target.
+        Rhino 6: net45
+        Rhino 7: net48
+        Rhino 8 Windows: net48, net7.0, net7.0-windows, net7.0-windows10.0.22000.0, etc
+        Rhino 8 Mac: net7.0, net7.0-macos, net7.0-macos12.0, etc
+    -->
+    <AssemblyName>CustomUndoEventIssuePlugin2</AssemblyName>
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <TargetExt>.rhp</TargetExt>
+    <NoWarn>NU1701</NoWarn>
+    <OutputPath>$(SolutionDir)/bin/$(Configuration)</OutputPath>
+  </PropertyGroup>
+  
+  <PropertyGroup>
+    <!-- Specifies information for Assembly and Yak -->
+    <Version>1.0</Version>
+    <Title>CustomUndoEventIssuePlugin2</Title>
+    <Company>Cullen Sarles</Company>
+    <Description>Demonstrates Issue of Multple Plugins Registering CustomUndoEvents for the same command</Description>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="RhinoCommon" Version="8.27.26019.16021" ExcludeAssets="runtime" />
+  </ItemGroup>
+  
+</Project>

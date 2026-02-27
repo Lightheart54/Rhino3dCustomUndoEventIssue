@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="CustomUndoEventIssue/CustomUndoEventIssue.csproj" />
+  <Project Path="SecondPlugin/SecondPlugin.csproj">
+    <BuildDependency Project="CustomUndoEventIssue/CustomUndoEventIssue.csproj" />
+  </Project>
+</Solution>
