@@ -32,6 +32,9 @@ public class CustomUndoEventIssuePlugin2 : Rhino.PlugIns.PlugIn
     {
         RhinoApp.WriteLine("CustomUndoEventIssuePlugin2 loaded.");
 
+        Command.BeginCommand += NotifyCommandBegin;
+        Command.EndCommand += NotifyCommandEnd;
+
         //What works is to set up a completely separate undo/redo stack and execute commands in response to the undo/redo events,
         //My gut tells the that this feels wrong. Like with setting user dictionaries and user test on the document or layers,
         //We'll have to artificially push an event onto the rhino undo stack if the command or action wouldn't otherwise create an undo event in rhino.
@@ -56,50 +59,105 @@ public class CustomUndoEventIssuePlugin2 : Rhino.PlugIns.PlugIn
     public override PlugInLoadTime LoadTime => PlugInLoadTime.AtStartup;
 
 
-    private Stack<Guid> _undoStack = new Stack<Guid>();
-    private Stack<Guid> _redoStack = new Stack<Guid>();
-
+    private Dictionary<uint, Guid> _commandIdMap = new ();
     private Guid _recordingCommandId = Guid.Empty;
+    private uint _recordingCommandSN = 0;
+    private bool _isUndoingRedoing = false;
     private void SeparateUndoRedoExecution(object sender, Rhino.Commands.UndoRedoEventArgs e)
     {
         if (e.IsBeforeBeginRecording)
         {
-            RhinoApp.WriteLine($"Preparing to record a new command. Command Id: {e.CommandId.ToString()[..8]}");
+            RhinoApp.WriteLine($"Preparing to record a new command. Command Id: {e.CommandId.ToString()[..8]}, Command SN: {e.UndoSerialNumber}");
             _recordingCommandId = e.CommandId;
+            if(_recordingCommandId == Guid.Empty)
+            {
+                _recordingCommandId = Guid.NewGuid(); // if the command id is empty, then it needs a dummy guid so that we can track it in the undo/redo events.
+                                                      // This is because we can record with outside of the context of a command,
+                                                      // such as in a document event, and those recordings will have an empty command id.
+            }
+            _recordingCommandSN = e.UndoSerialNumber;
+            _isUndoingRedoing = false;
             return;
         }
         if(e.IsBeginRecording) {
-            RhinoApp.WriteLine($"Started recording a new command. Command Id: {e.CommandId.ToString()[..8]}");
+            RhinoApp.WriteLine($"Started recording a new command. Command Id: {_recordingCommandId.ToString()[..8]}, Command SN: {_recordingCommandSN}");
             return; // we've already prepared for a new command in the BeforeBeginRecording event, no need to do anything in the BeginRecording event.
         }
         if (e.IsBeginUndo || e.IsBeginRedo)
         {
-            RhinoApp.WriteLine($"Starting to {(e.IsBeginUndo ? "Undo" : "Redo")} Command. Command Id: {e.CommandId.ToString()[..8]}");
+            _isUndoingRedoing = true;
+
+            var undoCommandSN = e.UndoSerialNumber;
+            var undoCommandId = _commandIdMap[undoCommandSN];
+            // if we're starting an undo or redo, then the current recording command is no longer relevant, so we can stop recording it.
+            RhinoApp.WriteLine($"Starting to {(e.IsBeginUndo ? "Undo" : "Redo")} Command. Command Id: {undoCommandId.ToString()[..8]}, Command SN: {undoCommandSN}");
             return;
         }
         else if(e.IsEndUndo) 
         { 
-            var undoCommandId = _undoStack.Pop();
-            RhinoApp.WriteLine($"Undo Command Id: {undoCommandId.ToString()[..8]}");
-            _redoStack.Push(undoCommandId);
+            var undoCommandSN = e.UndoSerialNumber;
+            var undoCommandId = _commandIdMap[undoCommandSN];
+            RhinoApp.WriteLine($"Undo Command Id: {undoCommandId.ToString()[..8]}, Command SN: {undoCommandSN}");
         }
         else if(e.IsEndRedo)
-        { 
-            var redoCommandId = _redoStack.Pop();
-            RhinoApp.WriteLine($"Redo Command Id: {redoCommandId.ToString()[..8]}");
-            _undoStack.Push(redoCommandId);
-        }
-
-
-        if(e.IsBeforeEndRecording && e.CommandId != _recordingCommandId)
-        {
-            RhinoApp.WriteLine($"Ending Recording of Undo/Redo Command. Command Id: {e.CommandId.ToString()[..8]}");
+        {             
+            var redoCommandSN = e.UndoSerialNumber;
+            var redoCommandId = _commandIdMap[redoCommandSN];
+            RhinoApp.WriteLine($"Redo Command Id: {redoCommandId.ToString()[..8]}, Command SN: {redoCommandSN}");
         }
         else if(e.IsBeforeEndRecording)
         {
-            RhinoApp.WriteLine($"New Command Recorded. Command Id: {e.CommandId.ToString()[..8]}");
-            _undoStack.Push(e.CommandId);
+            if(!_recordingCommandSN.Equals(e.UndoSerialNumber))
+            {
+                RhinoApp.WriteLine($"Command SN Mismatch. Expected: {_recordingCommandSN}, Actual: {e.UndoSerialNumber}");
+            }
+
+            if(!_isUndoingRedoing)
+            {
+                RhinoApp.WriteLine($"New Command Recorded. Command Id: {_recordingCommandId.ToString()[..8]}, Command SN: {_recordingCommandSN}");
+            }
+            else
+            {
+                RhinoApp.WriteLine($"Ending Recording of Undo/Redo Command. Command Id: {_recordingCommandId.ToString()[..8]}, Command SN: {_recordingCommandSN}");
+            }
+            _commandIdMap[_recordingCommandSN] = _recordingCommandId;
         }
+        else if(e.IsPurgeRecord)
+        {
+            _commandIdMap.Remove(e.UndoSerialNumber, out var commandIdToUndo);
+            if(e.UndoSerialNumber == _recordingCommandSN)
+            {
+                RhinoApp.WriteLine($"Command Cancelled, Pending Changes Undone: Command Id: {commandIdToUndo.ToString()[..8]}, Command SN; {e.UndoSerialNumber}");
+            }
+            else
+            {
+                RhinoApp.WriteLine($"Purge Record Triggered. Command Id: {commandIdToUndo.ToString()[..8]}, Command SN: {e.UndoSerialNumber}");
+            }
+        }
+        else if(e.IsEndRecording)
+        {
+            RhinoApp.WriteLine($"Completed Recording for Command Id: {_recordingCommandId.ToString()[..8]}, Command SN: {_recordingCommandSN}");
+        }
+    }
+
+    private void NotifyCommandBegin(object sender, Rhino.Commands.CommandEventArgs e)
+    {
+        RhinoApp.WriteLine($"BeginCommand Id: {e.CommandId.ToString()[..8]}, Name: {e.CommandEnglishName}");
+    }
+
+    private void NotifyCommandEnd(object sender, Rhino.Commands.CommandEventArgs e)
+    {
+        string result = e.CommandResult switch {
+            Result.Success => "Success",
+            Result.Failure => "Failure",
+            Result.Cancel => "Cancel",
+            Result.Nothing => "Nothing",
+            Result.CancelModelessDialog => "CancelModelessDialog",
+            Result.UnknownCommand => "UnknownCommand",
+            Result.ExitRhino => "ExitRhino",
+            _ => "Unknown"
+        };
+        RhinoApp.WriteLine($"EndCommand Id: {e.CommandId.ToString()[..8]}, Name: {e.CommandEnglishName}, Result: {result}");
     }
 
     private Guid currentCommandId = Guid.Empty;
